@@ -2,17 +2,17 @@ package telegram.bot.video.security;
 
 import org.telegram.telegrambots.ApiContextInitializer;
 import org.telegram.telegrambots.TelegramBotsApi;
+import org.telegram.telegrambots.api.methods.send.SendDocument;
 import org.telegram.telegrambots.api.methods.send.SendMessage;
 import org.telegram.telegrambots.api.objects.Message;
 import org.telegram.telegrambots.api.objects.Update;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
+import telegram.bot.video.security.core.CoreController;
+import telegram.bot.video.security.option.ControlOptions;
 
+import java.io.File;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -20,58 +20,99 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private static final Logger LOG = Logger.getLogger(TelegramBot.class.getCanonicalName());
 
-    private static final String BOT_TOKEN = "460589759:AAFplB6qvnG-1leEZkoU6FnTZ6PPsUJ_gDk";
-    private static final String BOT_NAME = "JTelegramVideoSecurityBot";
+    private static String botToken;
+    private static String botName;
 
-    private static ExecutorService pool;
-    private static Map<String, Control> controls = new HashMap<>();
+    private static CoreController core;
+    private static Message lastReceived;
 
-    public static void main(String[] args) {
-        LOG.info("Bot name: " + BOT_NAME);
+    public static TelegramBot start(String botToken, String botName) {
+        TelegramBot.botToken = botToken;
+        TelegramBot.botName = botName;
+        core = CoreController.getInstance();
+
+        LOG.info("Bot name: " + TelegramBot.botName);
         ApiContextInitializer.init();
         TelegramBotsApi botapi = new TelegramBotsApi();
         try {
-            botapi.registerBot(new TelegramBot());
+            TelegramBot telegramBot = new TelegramBot();
+            botapi.registerBot(telegramBot);
+            return telegramBot;
         } catch (TelegramApiException e) {
             LOG.log(Level.SEVERE, "", e);
+            return null;
         }
-        pool = Executors.newFixedThreadPool(4);
     }
 
     @Override
     public String getBotUsername() {
-        return BOT_NAME;
+        return botName;
     }
 
-    private static final String[] COMMANDS = {"/start", "/whatareyou", "/video", "/motion"};
-    private static final String[] CONTROL_COMMANDS = {"/stop", "/cancelsubscribe", "/setpollinterval", "/statsnow"};
+    private static final String[] COMMANDS = {"/whatareyou", "/list"};
+    public static final String[] CONTROL_COMMANDS = {"/stop", "/motion", "/stats"};
 
     @Override
     public void onUpdateReceived(Update e) {
         final Message msg = e.getMessage();
+        lastReceived = msg;
         final String txtMessage = msg.getText();
         LOG.info("Message received: " + txtMessage);
-        final String textCommand = extractCommand(txtMessage);
-        Control control = controls.get(textCommand);
-        if (control != null) {
-            processControl(control, msg);
+        final String commandKey = extractCommand(txtMessage);
+        if (!commandKey.contains("/")) {
+            processControl(commandKey, msg);
         } else {
-            processCommand(textCommand, msg);
+            processCommand(commandKey, msg);
         }
     }
 
-    private void processControl(Control control, Message msg) {
+    @SuppressWarnings("deprecation")
+    private void sendMsg(Message msg, String text) {
+        SendMessage s = new SendMessage();
+        s.setChatId(msg.getChatId());
+        s.setText(text);
+        try {
+            sendMessage(s);
+        } catch (TelegramApiException e) {
+            LOG.log(Level.SEVERE, "Failed to send message!", e);
+        }
+    }
+
+    public void sendMsg(String text) {
+        sendMsg(lastReceived, text);
+    }
+
+    private void processControl(String commandUid, Message msg) {
         final String txtMsg = msg.getText();
         final ControlOptions co = ControlOptions.parseControlOptions(txtMsg);
         if (CONTROL_COMMANDS[0].startsWith(co.command)) {
-            control.shutdown = true;
-            sendMsg(msg, "Process shutdown complete.");
+            sendMsg(msg, core.shutdown(commandUid));
         } else if (CONTROL_COMMANDS[1].startsWith(co.command)) {
-            sendMsg(msg, "Not yet implemented.");
+            sendMsg(msg, core.runDetector(co));
         } else if (CONTROL_COMMANDS[2].startsWith(co.command)) {
-            sendMsg(msg, "Not yet implemented.");
-        } else if (CONTROL_COMMANDS[3].startsWith(co.command)) {
-            sendMsg(msg, control.getStats());
+            try {
+                sendMsg(msg, "Report generation started...");
+                File f = core.getStats(co);
+                if (f == null) {
+                    sendMsg(msg, "Failed to generate report.");
+                } else {
+                    sendDocUploadingAFile(msg, f, "Report");
+                }
+            } catch (TelegramApiException e) {
+                e.printStackTrace();
+            }
+        } else if (CONTROL_COMMANDS[5].startsWith(co.command)) {
+            try {
+                sendMsg(msg, "Report generation started...");
+                File f = core.getStats(co);
+                if (f == null) {
+                    sendMsg(msg, "Failed to generate report.");
+                } else {
+                    sendDocUploadingAFile(msg, f, "Report");
+                }
+            } catch (TelegramApiException e) {
+                e.printStackTrace();
+            }
         } else {
             StringBuilder b = new StringBuilder();
             Arrays.asList(CONTROL_COMMANDS).forEach(r -> b.append(r).append(" "));
@@ -80,40 +121,15 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void processCommand(String textCommand, Message msg) {
-        final String txtMsg = msg.getText();
         if (COMMANDS[0].startsWith(textCommand)) {
-            sendMsg(msg, "Hello, world! This is simple bot!");
-        } else if (COMMANDS[1].startsWith(textCommand)) {
             sendMsg(msg, "I am a telegram bot designed to inform you about video security system detections.");
-        } else if (COMMANDS[2].startsWith(textCommand)) {
-            Options o = Options.parseOptions(txtMsg);
-            controls.put(o.key, runCapture());
-            sendMsg(msg, "To control launched task use control key: " + o.key);
-        } else if (COMMANDS[3].startsWith(textCommand)) {
-            Options o = Options.parseOptions(txtMsg);
-            controls.put(o.key, runDetector(o));
-            sendMsg(msg, "To control launched task use control key: " + o.key);
+        } else if (COMMANDS[1].startsWith(textCommand)) {
+            sendMsg(msg, core.getAllCameras());
         } else {
             StringBuilder b = new StringBuilder();
             Arrays.asList(COMMANDS).forEach(r -> b.append(r).append(" "));
             sendMsg(msg, "Sorry, for now i know only the following commands: " + b.toString());
         }
-    }
-
-    private Control runCapture() {
-        Control c = new Control();
-        Camera cam = new Camera(c);
-        c.cam = cam;
-        pool.execute(cam::startVideoCapture);
-        return c;
-    }
-
-    private Control runDetector(Options o) {
-        Control c = new Control();
-        Camera cam = new Camera(c);
-        c.cam = cam;
-        pool.execute(() -> cam.detectMotion(o.width, o.height));
-        return c;
     }
 
     private String extractCommand(String txt) {
@@ -128,19 +144,16 @@ public class TelegramBot extends TelegramLongPollingBot {
         return txt;
     }
 
-    @Override
-    public String getBotToken() {
-        return BOT_TOKEN;
+    private void sendDocUploadingAFile(Message msg, File save, String caption) throws TelegramApiException {
+        SendDocument sendDocumentRequest = new SendDocument();
+        sendDocumentRequest.setChatId(msg.getChatId());
+        sendDocumentRequest.setNewDocument(save);
+        sendDocumentRequest.setCaption(caption);
+        sendDocument(sendDocumentRequest);
     }
 
-    private void sendMsg(Message msg, String text) {
-        SendMessage s = new SendMessage();
-        s.setChatId(msg.getChatId());
-        s.setText(text);
-        try {
-            sendMessage(s);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
+    @Override
+    public String getBotToken() {
+        return botToken;
     }
 }
