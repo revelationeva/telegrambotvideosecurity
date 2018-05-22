@@ -50,7 +50,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private static final String[] COMMANDS = {"/whatareyou", "/list"};
-    public static final String[] CONTROL_COMMANDS = {"/stop", "/motion", "/stats"};
+    public static final String[] CONTROL_COMMANDS = {"/stop", "/motion", "/report"};
 
     @Override
     public void onUpdateReceived(Update e) {
@@ -142,6 +142,10 @@ public class TelegramBot extends TelegramLongPollingBot {
             return s[0];
         }
         return txt;
+    }
+
+    public void sendFile(File f, String caption) throws TelegramApiException {
+        sendDocUploadingAFile(lastReceived, f, caption);
     }
 
     private void sendDocUploadingAFile(Message msg, File save, String caption) throws TelegramApiException {

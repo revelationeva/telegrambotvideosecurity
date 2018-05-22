@@ -3,6 +3,7 @@ package telegram.bot.video.security.core;
 import telegram.bot.video.security.entity.Capture;
 import telegram.bot.video.security.entity.CaptureStatistics;
 
+import java.io.File;
 import java.util.Date;
 
 class Control {
@@ -15,6 +16,10 @@ class Control {
 
     void sendAlert() {
         CoreController.getInstance().sendAlert("Camera (" + capture.getUid() + ") " + capture.getCamName() + " detected intensive motion!");
+    }
+
+    void sendFile(File f, String caption) {
+        CoreController.getInstance().sendFile(f, caption);
     }
 
     void finishCapture() {

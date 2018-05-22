@@ -4,6 +4,7 @@ import com.google.common.io.Files;
 import net.sf.jasperreports.engine.*;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import org.openimaj.video.capture.Device;
+import org.telegram.telegrambots.exceptions.TelegramApiException;
 import telegram.bot.video.security.TelegramBot;
 import telegram.bot.video.security.entity.Capture;
 import telegram.bot.video.security.entity.CaptureReport;
@@ -53,6 +54,14 @@ public class CoreController {
 
     void sendAlert(String text) {
         bot.sendMsg(text);
+    }
+
+    void sendFile(File f, String caption) {
+        try {
+            bot.sendFile(f, caption);
+        } catch (TelegramApiException e) {
+            LOG.log(Level.SEVERE, "Failed to send file to client!", e);
+        }
     }
 
     private ExecutorService pool = Executors.newFixedThreadPool(4);
