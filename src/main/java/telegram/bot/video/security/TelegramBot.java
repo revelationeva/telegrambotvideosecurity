@@ -50,7 +50,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private static final String[] COMMANDS = {"/whatareyou", "/list"};
-    public static final String[] CONTROL_COMMANDS = {"/stop", "/motion", "/report"};
+    public static final String[] CONTROL_COMMANDS = {"/stop", "/motion", "/report", "/faces"};
 
     @Override
     public void onUpdateReceived(Update e) {
@@ -101,18 +101,8 @@ public class TelegramBot extends TelegramLongPollingBot {
             } catch (TelegramApiException e) {
                 e.printStackTrace();
             }
-        } else if (CONTROL_COMMANDS[5].startsWith(co.command)) {
-            try {
-                sendMsg(msg, "Report generation started...");
-                File f = core.getStats(co);
-                if (f == null) {
-                    sendMsg(msg, "Failed to generate report.");
-                } else {
-                    sendDocUploadingAFile(msg, f, "Report");
-                }
-            } catch (TelegramApiException e) {
-                e.printStackTrace();
-            }
+        } else if (CONTROL_COMMANDS[3].startsWith(co.command)) {
+            sendMsg(msg, core.runFaceRecognition(co));
         } else {
             StringBuilder b = new StringBuilder();
             Arrays.asList(CONTROL_COMMANDS).forEach(r -> b.append(r).append(" "));

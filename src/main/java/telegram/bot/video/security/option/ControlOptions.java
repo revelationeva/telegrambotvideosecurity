@@ -5,10 +5,10 @@ public class ControlOptions {
     public String command;
     public String[] options;
 
-    public int sensivity = 500;
+    public int sensitivity = 500;
     public int pollInterval = 1000;
-    public int width = 640;
-    public int height = 480;
+    public int width = 1280;
+    public int height = 720;
 
     public static ControlOptions parseControlOptions(String txt) {
         String[] split = txt.split(" ");
@@ -19,7 +19,7 @@ public class ControlOptions {
                 o.command = split[1];
             }
             if (split.length > 2) {
-                o.sensivity = Integer.parseInt(split[2]);
+                o.sensitivity = Integer.parseInt(split[2]);
             }
             if (split.length > 3) {
                 o.pollInterval = Integer.parseInt(split[3]);

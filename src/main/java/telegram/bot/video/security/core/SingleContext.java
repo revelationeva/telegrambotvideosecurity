@@ -7,7 +7,6 @@ import telegram.bot.video.security.helper.CriteriaQueryBuilder;
 import telegram.bot.video.security.helper.Pair;
 import telegram.bot.video.security.helper.UUIDUtil;
 import telegram.bot.video.security.option.ControlOptions;
-import telegram.bot.video.security.option.Options;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
@@ -31,6 +30,9 @@ final class SingleContext {
     private EntityManager em;
 
     private SingleContext() {
+        /*emf = Persistence.createEntityManagerFactory("telegramBotDBCreatePU");
+        emf.close();*/
+
         emf = Persistence.createEntityManagerFactory("telegramBotPU");
         em = emf.createEntityManager();
         final Set<String> usedUids = new CriteriaQueryBuilder(em).getSingleColumnList(String.class, Capture.class, "uid");
@@ -72,7 +74,7 @@ final class SingleContext {
         returnEm(em, useTx);
     }
 
-    private EntityManager borrowEm(boolean startTx) {
+    public EntityManager borrowEm(boolean startTx) {
         while (emPool.size() == 0) {
             try {
                 Thread.sleep(100);
@@ -88,7 +90,7 @@ final class SingleContext {
         return em;
     }
 
-    private void returnEm(EntityManager em, boolean commitActiveTx) {
+    public void returnEm(EntityManager em, boolean commitActiveTx) {
         if (em != null) {
             final EntityTransaction tx = em.getTransaction();
             if (tx.isActive() && commitActiveTx) {
@@ -114,10 +116,6 @@ final class SingleContext {
         swap(camUid, busyCameras, availableCameras);
     }
 
-    void useCam(String camUid) {
-        swap(camUid, availableCameras, busyCameras);
-    }
-
     private void swap(String camUid, Map<String, Device> from, Map<String, Device> to) {
         Device remove = from.remove(camUid);
         if (remove != null) {
@@ -125,7 +123,7 @@ final class SingleContext {
         }
     }
 
-    String use(ControlOptions co) {
+    String useCam(ControlOptions co) {
         Device avail = availableCameras.remove(co.uid);
         if (avail != null) {
             busyCameras.put(co.uid, avail);

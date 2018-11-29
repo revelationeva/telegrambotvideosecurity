@@ -1,11 +1,19 @@
 package telegram.bot.video.security.core;
 
-import com.google.common.io.Files;
-import net.sf.jasperreports.engine.*;
+import net.sf.jasperreports.engine.JRException;
+import net.sf.jasperreports.engine.JRPrintPage;
+import net.sf.jasperreports.engine.JasperCompileManager;
+import net.sf.jasperreports.engine.JasperExportManager;
+import net.sf.jasperreports.engine.JasperFillManager;
+import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.engine.JasperReport;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import org.openimaj.video.capture.Device;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 import telegram.bot.video.security.TelegramBot;
+import telegram.bot.video.security.core.camera.CameraFunctionality;
+import telegram.bot.video.security.core.camera.FaceRecognition;
+import telegram.bot.video.security.core.camera.MotionDetection;
 import telegram.bot.video.security.entity.Capture;
 import telegram.bot.video.security.entity.CaptureReport;
 import telegram.bot.video.security.entity.CaptureStatistics;
@@ -16,9 +24,15 @@ import javax.persistence.EntityManager;
 import javax.persistence.criteria.Join;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Spliterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -52,7 +66,7 @@ public class CoreController {
         bot = TelegramBot.start(botToken, botName);
     }
 
-    void sendAlert(String text) {
+    void sendMsg(String text) {
         bot.sendMsg(text);
     }
 
@@ -68,16 +82,14 @@ public class CoreController {
     private Map<String, Control> controls = new HashMap<>();
 
     public String runDetector(ControlOptions co) {
-        final String responce = ctx.use(co);
-        if (responce != null) {
-            return responce;
+        final String response = ctx.useCam(co);
+        if (response != null) {
+            return response;
         }
 
-        final Control c = controls.computeIfAbsent(co.uid, s -> {
-            Control p = new Control();
-            p.camController = new CameraProcessor(p, ctx.current.value, co);
-            return p;
-        });
+        CameraFunctionality func = new MotionDetection(co);
+        final Control c = getControl(co, func);
+        func.setControl(c);
 
         if (!c.isRunning) {
             Capture capture = new Capture();
@@ -86,7 +98,7 @@ public class CoreController {
             capture.setMajorName("Major");
             capture.setUid(ctx.current.key);
             capture.setCamName(ctx.current.value.getNameStr());
-            capture.setSensivity(co.sensivity);
+            capture.setSensivity(co.sensitivity);
             capture.setPollInterval(co.pollInterval);
             capture.setDateStarted(new Date());
             ctx.persist(capture, true);
@@ -94,11 +106,38 @@ public class CoreController {
 
             c.isRunning = true;
 
-            pool.execute(() -> c.camController.detectMotion(co.width, co.height));
+            pool.execute(() -> c.camProcessor.run(co.width, co.height));
             return "Motion detection started.";
         } else {
             return "Process already launched.";
         }
+    }
+
+    public String runFaceRecognition(ControlOptions co) {
+        final String response = ctx.useCam(co);
+        if (response != null) {
+            return response;
+        }
+
+        CameraFunctionality func = new FaceRecognition(co);
+        final Control c = getControl(co, func);
+        func.setControl(c);
+
+        if (!c.isRunning) {
+            c.isRunning = true;
+            pool.execute(() -> c.camProcessor.run(co.width, co.height));
+            return "Face recognition started.";
+        } else {
+            return "Process already launched.";
+        }
+    }
+
+    private Control getControl(ControlOptions co, CameraFunctionality cf) {
+        return controls.computeIfAbsent(co.uid, s -> {
+            Control p = new Control();
+            p.camProcessor = new CameraProcessor(p, ctx.current.value, cf);
+            return p;
+        });
     }
 
     public String shutdown(String commandKey) {
@@ -110,10 +149,6 @@ public class CoreController {
             return "(" + commandKey + ") shutdown complete.";
         }
         return "(" + commandKey + ") no such entity to shutdown.";
-    }
-
-    public void allStats(ControlOptions co) {
-        // TODO
     }
 
     public File getStats(ControlOptions co) {
@@ -143,7 +178,7 @@ public class CoreController {
             File f = new File(report.getReportName());
             f.deleteOnExit();
             try {
-                Files.write(report.getReport(), f);
+                Files.write(Paths.get(f.getPath()), report.getReport());
             } catch (IOException e) {
                 LOG.log(Level.SEVERE, "Failed to write persisted report to file!", e);
                 return null;
@@ -172,7 +207,7 @@ public class CoreController {
             cr.setCapture(capture);
             cr.setReportName(fileName);
             try {
-                cr.setReport(Files.toByteArray(f));
+                cr.setReport(Files.readAllBytes(Paths.get(f.getPath())));
                 SingleContext.getInstance().persist(cr, true);
             } catch (IOException e) {
                 LOG.log(Level.SEVERE, "Failed to persist report!", e);
